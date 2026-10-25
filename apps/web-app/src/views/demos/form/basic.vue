@@ -6,7 +6,7 @@ import { Page, useVbenDrawer } from '@vben/common-ui';
 import { ElButton, ElCard, ElCheckbox, ElMessage } from 'element-plus';
 
 import { useVbenForm } from '#/adapter/form';
-import { getAllMenusApi } from '#/api';
+import { listBooksApi } from '#/api';
 
 const [Form, formApi] = useVbenForm({
   commonConfig: {
@@ -32,15 +32,15 @@ const [Form, formApi] = useVbenForm({
       component: 'ApiSelect',
       // 对应组件的参数
       componentProps: {
-        // 菜单接口转options格式
-        afterFetch: (data: { name: string; path: string }[]) => {
-          return data.map((item: any) => ({
-            label: item.name,
-            value: item.path,
+        // 图书列表转 options 格式
+        afterFetch: (data: any[]) => {
+          return data.map((item) => ({
+            label: `${item.title} / ${item.author}`,
+            value: item.id,
           }));
         },
-        // 菜单接口
-        api: getAllMenusApi,
+        // 列表接口
+        api: listBooksApi,
       },
       // 字段名
       fieldName: 'api',
@@ -51,12 +51,33 @@ const [Form, formApi] = useVbenForm({
       component: 'ApiTreeSelect',
       // 对应组件的参数
       componentProps: {
-        // 菜单接口
-        api: getAllMenusApi,
+        // 图书列表接口，按作者转成树
+        afterFetch: (data: any[]) => {
+          const authors = new Map<
+            string,
+            { children: any[]; label: string; value: string }
+          >();
+          for (const item of data) {
+            const author = item.author ?? '未知作者';
+            if (!authors.has(author)) {
+              authors.set(author, {
+                children: [],
+                label: author,
+                value: author,
+              });
+            }
+            authors.get(author)?.children.push({
+              label: item.title,
+              value: item.id,
+            });
+          }
+          return [...authors.values()];
+        },
+        api: listBooksApi,
         childrenField: 'children',
-        // 菜单接口转options格式
-        labelField: 'name',
-        valueField: 'path',
+        // 字段名
+        labelField: 'label',
+        valueField: 'value',
       },
       // 字段名
       fieldName: 'apiTree',

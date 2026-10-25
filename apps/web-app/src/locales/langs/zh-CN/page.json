@@ -11,5 +11,14 @@
     "title": "概览",
     "analytics": "分析页",
     "workspace": "工作台"
+  },
+  "books": {
+    "title": "图书管理"
+  },
+  "systemConfig": {
+    "title": "系统配置"
+  },
+  "picUpload": {
+    "title": "图片上传"
   }
 }

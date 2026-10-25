@@ -16,8 +16,8 @@ export default defineConfig(async () => {
           '/api': {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api/, ''),
-            // mock代理目标地址
-            target: 'http://localhost:5320/api',
+            // demo-backend 服务地址（见 openapi/openapi.yaml 的 servers）
+            target: 'http://localhost:17001',
             ws: true,
           },
         },

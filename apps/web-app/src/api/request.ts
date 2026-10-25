@@ -3,6 +3,8 @@
  */
 import type { RequestClientOptions } from '@vben/request';
 
+import type { ProblemDetail } from '#/types/openapi';
+
 import { useAppConfig } from '@vben/hooks';
 import { preferences } from '@vben/preferences';
 import {
@@ -17,8 +19,6 @@ import { ElMessage } from 'element-plus';
 
 import { useAuthStore } from '#/store';
 
-import { refreshTokenApi } from './core';
-
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
 
 function createRequestClient(baseURL: string, options?: RequestClientOptions) {
@@ -31,7 +31,7 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
    * 重新认证逻辑
    */
   async function doReAuthenticate() {
-    console.warn('Access token or refresh token is invalid or expired. ');
+    console.warn('Access token is invalid or expired. ');
     const accessStore = useAccessStore();
     const authStore = useAuthStore();
     accessStore.setAccessToken(null);
@@ -46,14 +46,10 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   }
 
   /**
-   * 刷新token逻辑
+   * demo-backend 未提供刷新 token 接口，token 过期后直接重新登录
    */
-  async function doRefreshToken() {
-    const accessStore = useAccessStore();
-    const resp = await refreshTokenApi();
-    const newToken = resp.data;
-    accessStore.setAccessToken(newToken);
-    return newToken;
+  async function doRefreshToken(): Promise<string> {
+    throw new Error('当前后端未提供刷新 token 接口');
   }
 
   function formatToken(token: null | string) {
@@ -71,7 +67,10 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
     },
   });
 
-  // 处理返回的响应数据格式
+  /**
+   * demo-backend 的响应体就是业务数据本身（没有 code/data 包装），
+   * 配合下方 responseReturn: 'body' 直接返回响应体
+   */
   client.addResponseInterceptor(
     defaultResponseInterceptor({
       codeField: 'code',
@@ -86,7 +85,7 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       client,
       doReAuthenticate,
       doRefreshToken,
-      enableRefreshToken: preferences.app.enableRefreshToken,
+      enableRefreshToken: false,
       formatToken,
     }),
   );
@@ -94,11 +93,16 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   // 通用的错误处理,如果没有进入上面的错误处理逻辑，就会进入这里
   client.addResponseInterceptor(
     errorMessageResponseInterceptor((msg: string, error) => {
-      // 这里可以根据业务进行定制,你可以拿到 error 内的信息进行定制化处理，根据不同的 code 做不同的提示，而不是直接使用 message.error 提示 msg
-      // 当前mock接口返回的错误字段是 error 或者 message
-      const responseData = error?.response?.data ?? {};
-      const errorMessage = responseData?.error ?? responseData?.message ?? '';
-      // 如果没有错误信息，则会根据状态码进行提示
+      // 后端错误统一为 RFC 7807 ProblemDetail（application/problem+json）
+      const responseData = error?.response?.data;
+      const problem: ProblemDetail | undefined =
+        responseData && typeof responseData === 'object'
+          ? responseData
+          : undefined;
+      const errorMessage =
+        problem?.detail ||
+        problem?.title ||
+        (typeof responseData === 'string' ? responseData : '');
       ElMessage.error(errorMessage || msg);
     }),
   );
@@ -107,7 +111,8 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
 }
 
 export const requestClient = createRequestClient(apiURL, {
-  responseReturn: 'data',
+  // body: 直接把响应体返回给调用方，不做 code/data 解包
+  responseReturn: 'body',
 });
 
 export const baseRequestClient = new RequestClient({ baseURL: apiURL });

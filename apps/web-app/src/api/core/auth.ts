@@ -1,55 +1,44 @@
-import { baseRequestClient, requestClient } from '#/api/request';
+import { requestClient } from '#/api/request';
 
 export namespace AuthApi {
-  /** 登录接口参数 */
+  /** 登录接口参数（POST /login） */
   export interface LoginParams {
     password?: string;
     username?: string;
   }
 
-  /** 登录接口返回值 */
+  /** 登录接口返回值（POST /login） */
   export interface LoginResult {
-    accessToken: string;
+    /** 昵称 */
+    nickname: string;
+    /** 权限编码列表，如 book:* */
+    permissions: string[];
+    /** 角色编码列表，如 admin */
+    roles: string[];
+    /** 后续请求放入 Authorization: Bearer <token> */
+    token: string;
+    username: string;
   }
 
-  export interface RefreshTokenResult {
-    data: string;
-    status: number;
+  /** 当前登录用户（GET /me） */
+  export interface MeResult {
+    nickname: string;
+    permissions: string[];
+    roles: string[];
+    username: string;
   }
 }
 
 /**
- * 登录
+ * 登录并签发 JWT
  */
 export async function loginApi(data: AuthApi.LoginParams) {
-  return requestClient.post<AuthApi.LoginResult>('/auth/login', data);
+  return requestClient.post<AuthApi.LoginResult>('/login', data);
 }
 
 /**
- * 刷新accessToken
+ * 获取当前登录用户（含角色与权限）
  */
-export async function refreshTokenApi() {
-  return baseRequestClient.post<AuthApi.RefreshTokenResult>(
-    '/auth/refresh',
-    undefined,
-    {
-      withCredentials: true,
-    },
-  );
-}
-
-/**
- * 退出登录
- */
-export async function logoutApi() {
-  return baseRequestClient.post('/auth/logout', undefined, {
-    withCredentials: true,
-  });
-}
-
-/**
- * 获取用户权限码
- */
-export async function getAccessCodesApi() {
-  return requestClient.get<string[]>('/auth/codes');
+export async function getCurrentUserApi() {
+  return requestClient.get<AuthApi.MeResult>('/me');
 }

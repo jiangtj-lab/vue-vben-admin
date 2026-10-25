@@ -11,5 +11,14 @@
     "title": "Dashboard",
     "analytics": "Analytics",
     "workspace": "Workspace"
+  },
+  "books": {
+    "title": "Books"
+  },
+  "systemConfig": {
+    "title": "System Config"
+  },
+  "picUpload": {
+    "title": "Picture Upload"
   }
 }
