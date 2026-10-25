@@ -5,8 +5,14 @@ import { AuthPageLayout } from '@vben/layouts';
 import { preferences } from '@vben/preferences';
 
 import { $t } from '#/locales';
+import { useSiteStore } from '#/store';
 
-const appName = computed(() => preferences.app.name);
+const siteStore = useSiteStore();
+
+const appName = computed(() => siteStore.siteName);
+const pageDescription = computed(
+  () => siteStore.siteDescription || $t('authentication.pageDesc'),
+);
 const logo = computed(() => preferences.logo.source);
 const logoDark = computed(() => preferences.logo.sourceDark);
 </script>
@@ -16,7 +22,7 @@ const logoDark = computed(() => preferences.logo.sourceDark);
     :app-name="appName"
     :logo="logo"
     :logo-dark="logoDark"
-    :page-description="$t('authentication.pageDesc')"
+    :page-description="pageDescription"
     :page-title="$t('authentication.pageTitle')"
   >
     <!-- 自定义工具栏 -->

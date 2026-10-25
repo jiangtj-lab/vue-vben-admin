@@ -29,10 +29,13 @@ import {
   resetSystemConfigApi,
   updateSystemConfigApi,
 } from '#/api';
+import { useSiteStore } from '#/store';
 
 import JsonSchemaEditor from './json-schema-editor.vue';
 
 defineOptions({ name: 'SystemConfig' });
+
+const siteStore = useSiteStore();
 
 /** 全量配置项，仅在初始化与重新加载时获取 */
 const items = ref<SystemConfigApi.ItemInfo[]>([]);
@@ -238,6 +241,8 @@ async function save() {
     await updateSystemConfigApi(editing.value.key, value);
     ElMessage.success('保存成功');
     dialogVisible.value = false;
+    // 站点名称、描述等公开配置需要同步到全局状态
+    void siteStore.loadConfigs(true);
     await load();
   } finally {
     saving.value = false;
@@ -256,6 +261,7 @@ async function restore(item: SystemConfigApi.ItemInfo) {
   }
   await resetSystemConfigApi(item.key);
   ElMessage.success('已恢复默认值');
+  void siteStore.loadConfigs(true);
   await load();
 }
 
@@ -272,6 +278,7 @@ async function copyProperties(item: SystemConfigApi.ItemInfo) {
 async function refreshCache() {
   await refreshSystemConfigApi();
   ElMessage.success('配置缓存已刷新');
+  void siteStore.loadConfigs(true);
   await load();
 }
 

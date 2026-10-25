@@ -11,6 +11,7 @@ import { useTitle } from '@vueuse/core';
 import { ElLoading } from 'element-plus';
 
 import { $t, setupI18n } from '#/locales';
+import { useSiteStore } from '#/store';
 
 import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm } from './adapter/form';
@@ -49,6 +50,10 @@ async function bootstrap(namespace: string) {
   // 配置 pinia-tore
   await initStores(app, { namespace });
 
+  // 加载站点公开配置（站点名称、描述等），不阻塞应用启动
+  const siteStore = useSiteStore();
+  void siteStore.loadConfigs();
+
   // 安装权限指令
   registerAccessDirective(app);
 
@@ -63,12 +68,12 @@ async function bootstrap(namespace: string) {
   const { MotionPlugin } = await import('@vben/plugins/motion');
   app.use(MotionPlugin);
 
-  // 动态更新标题
+  // 动态更新标题（站点名称来自公开配置，加载完成后会自动更新）
   watchEffect(() => {
     if (preferences.app.dynamicTitle) {
       const routeTitle = router.currentRoute.value.meta?.title;
       const pageTitle =
-        (routeTitle ? `${$t(routeTitle)} - ` : '') + preferences.app.name;
+        (routeTitle ? `${$t(routeTitle)} - ` : '') + siteStore.siteName;
       useTitle(pageTitle);
     }
   });

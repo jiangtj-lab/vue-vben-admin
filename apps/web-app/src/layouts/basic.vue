@@ -19,7 +19,7 @@ import { useAccessStore, useUserStore } from '@vben/stores';
 import { openWindow } from '@vben/utils';
 
 import { $t } from '#/locales';
-import { useAuthStore } from '#/store';
+import { useAuthStore, useSiteStore } from '#/store';
 import LoginForm from '#/views/_core/authentication/login.vue';
 
 const notifications = ref<NotificationItem[]>([
@@ -78,6 +78,7 @@ const notifications = ref<NotificationItem[]>([
 const router = useRouter();
 const userStore = useUserStore();
 const authStore = useAuthStore();
+const siteStore = useSiteStore();
 const accessStore = useAccessStore();
 const { destroyWatermark, updateWatermark } = useWatermark();
 const { isDark } = usePreferences();
@@ -219,6 +220,7 @@ watch(
 <template>
   <BasicLayout
     :avatar
+    :logo-text="siteStore.siteName"
     :text="userStore.userInfo?.realName"
     @clear-preferences-and-logout="handleLogout"
     @logout="handleLogout"

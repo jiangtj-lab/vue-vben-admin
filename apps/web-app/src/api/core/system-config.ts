@@ -1,6 +1,6 @@
 import type { JsonSchema } from '#/types/openapi';
 
-import { requestClient } from '#/api/request';
+import { baseRequestClient, requestClient } from '#/api/request';
 
 export namespace SystemConfigApi {
   /** 前端渲染类型 */
@@ -58,6 +58,25 @@ export namespace SystemConfigApi {
     /** 按 tag 过滤，为空则返回全部 */
     tag?: string;
   }
+
+  /** 公开配置项（仅含 key / name / value） */
+  export interface PublicItemInfo {
+    key: string;
+    name: string;
+    value: string;
+  }
+}
+
+/**
+ * 查询公开配置项（无需登录与权限）
+ * 使用 baseRequestClient，避免携带 Authorization 头与全局错误提示
+ */
+export async function getPublicSystemConfigsApi() {
+  // baseRequestClient 未注册响应拦截器，直接返回 AxiosResponse
+  const { data } = await baseRequestClient.instance.get<
+    SystemConfigApi.PublicItemInfo[]
+  >('/system/configs/public');
+  return data;
 }
 
 /**
