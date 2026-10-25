@@ -15,6 +15,8 @@ import {
   ElMessage,
   ElMessageBox,
   ElOption,
+  ElRadioButton,
+  ElRadioGroup,
   ElSelect,
   ElSwitch,
   ElTag,
@@ -27,6 +29,8 @@ import {
   resetSystemConfigApi,
   updateSystemConfigApi,
 } from '#/api';
+
+import JsonSchemaEditor from './json-schema-editor.vue';
 
 defineOptions({ name: 'SystemConfig' });
 
@@ -119,6 +123,47 @@ const editing = ref<null | SystemConfigApi.ItemInfo>(null);
 const editText = ref('');
 const editBool = ref(false);
 const editArray = ref<string[]>([]);
+/** JSON 类型配置项的解析结果，供 schema 表单渲染 */
+const editJson = ref<unknown>(null);
+/** JSON 编辑模式：有 schema 时默认表单，无 schema 或值非法时退回源码 */
+const jsonMode = ref<'form' | 'source'>('source');
+
+/** 是否提供了可渲染的 JSON Schema */
+function hasJsonSchema(item: null | SystemConfigApi.ItemInfo) {
+  const schema = item?.schema;
+  if (!schema) {
+    return false;
+  }
+  if (Object.keys(schema.properties ?? {}).length > 0) {
+    return true;
+  }
+  // 键值映射（如 Map<String, Dir>）只有 additionalProperties
+  if (schema.additionalProperties) {
+    return true;
+  }
+  if (schema.items || (schema.enum && schema.enum.length > 0)) {
+    return true;
+  }
+  return ['boolean', 'integer', 'number', 'string'].includes(schema.type ?? '');
+}
+
+/** 是否有可用的 JSON Schema，可切换表单模式 */
+const jsonSchemaEnabled = computed(
+  () => editing.value?.type === 'JSON' && hasJsonSchema(editing.value),
+);
+
+const jsonFormMode = computed(
+  () => jsonSchemaEnabled.value && jsonMode.value === 'form',
+);
+
+/** 安全解析 JSON 文本 */
+function parseJson(text: string): { ok: boolean; value: unknown } {
+  try {
+    return { ok: true, value: JSON.parse(text || 'null') };
+  } catch {
+    return { ok: false, value: null };
+  }
+}
 
 function openEdit(item: SystemConfigApi.ItemInfo) {
   editing.value = item;
@@ -130,7 +175,31 @@ function openEdit(item: SystemConfigApi.ItemInfo) {
         .map((value) => value.trim())
         .filter(Boolean)
     : [];
+
+  const parsed = parseJson(item.value ?? '');
+  editJson.value = parsed.ok ? parsed.value : null;
+  jsonMode.value = hasJsonSchema(item) && parsed.ok ? 'form' : 'source';
+
   dialogVisible.value = true;
+}
+
+/** 表单/源码模式切换：切换前先同步两边的值 */
+function handleJsonModeChange(mode?: boolean | number | string) {
+  if (mode === 'source') {
+    jsonMode.value = 'source';
+    editText.value = JSON.stringify(editJson.value ?? null, null, 2);
+    return;
+  }
+  if (mode !== 'form') {
+    return;
+  }
+  const parsed = parseJson(editText.value);
+  if (!parsed.ok) {
+    ElMessage.error('JSON 格式不正确，请先修正后再切换到表单');
+    return;
+  }
+  jsonMode.value = 'form';
+  editJson.value = parsed.value ?? {};
 }
 
 function buildValue() {
@@ -143,7 +212,9 @@ function buildValue() {
     }
     case 'JSON': {
       // JSON 类型会由后端校验并规范化为紧凑 JSON，这里先本地校验一次
-      return JSON.stringify(JSON.parse(editText.value));
+      return jsonFormMode.value
+        ? JSON.stringify(editJson.value ?? null)
+        : JSON.stringify(JSON.parse(editText.value));
     }
     default: {
       return editText.value;
@@ -315,7 +386,7 @@ onMounted(load);
       v-model="dialogVisible"
       :close-on-click-modal="false"
       :title="`编辑配置：${editing?.name ?? ''}`"
-      width="560px"
+      :width="jsonSchemaEnabled ? '680px' : '560px'"
     >
       <div v-if="editing" class="flex flex-col gap-3">
         <div class="text-muted-foreground font-mono text-xs">
@@ -351,8 +422,47 @@ onMounted(load);
             :value="option.first"
           />
         </ElSelect>
+        <template v-else-if="editing.type === 'JSON'">
+          <div
+            v-if="jsonSchemaEnabled"
+            class="flex items-center justify-between gap-2"
+          >
+            <span class="text-muted-foreground text-xs">
+              {{
+                editing.schema?.title
+                  ? `${editing.schema.title} · 已按 schema 生成字段`
+                  : '已按 schema 生成字段'
+              }}
+            </span>
+            <ElRadioGroup
+              :model-value="jsonMode"
+              size="small"
+              @change="handleJsonModeChange"
+            >
+              <ElRadioButton value="form">表单</ElRadioButton>
+              <ElRadioButton value="source">源码</ElRadioButton>
+            </ElRadioGroup>
+          </div>
+          <div v-if="jsonFormMode" class="max-h-[55vh] overflow-auto pr-1">
+            <JsonSchemaEditor
+              v-model="editJson"
+              :schema="editing.schema"
+              :secret-paths="editing.secretPaths"
+            />
+          </div>
+          <div v-else class="flex flex-col gap-1">
+            <ElInput v-model="editText" :rows="12" type="textarea" />
+            <span class="text-muted-foreground text-xs">
+              {{
+                jsonSchemaEnabled
+                  ? '可直接编辑 JSON 源码，切换回表单前会校验格式'
+                  : '该配置项未提供 schema，仅支持源码编辑'
+              }}
+            </span>
+          </div>
+        </template>
         <ElInput
-          v-else-if="editing.type === 'JSON' || editing.type === 'TEXTAREA'"
+          v-else-if="editing.type === 'TEXTAREA'"
           v-model="editText"
           :rows="8"
           type="textarea"
@@ -361,6 +471,12 @@ onMounted(load);
 
         <div v-if="editing.secret" class="text-xs text-orange-500">
           敏感配置项：值中的 ****** 会回填为原值
+        </div>
+        <div
+          v-if="editing.type === 'JSON' && editing.secretPaths.length > 0"
+          class="text-xs text-orange-500"
+        >
+          secretPaths 标记的字段已脱敏，值为 ****** 提交时会回填原值
         </div>
       </div>
       <template #footer>
