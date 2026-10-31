@@ -16,6 +16,38 @@ export interface ProblemDetail {
   type?: string;
 }
 
+/** 分页元信息（Spring Data `PagedModel` 的 `page` 字段） */
+export interface PageMeta {
+  /** 当前页码，从 0 开始（请求参数 page 从 1 开始） */
+  number: number;
+  /** 每页条数 */
+  size: number;
+  /** 总记录数 */
+  totalElements: number;
+  /** 总页数 */
+  totalPages: number;
+}
+
+/** 分页结果（BookPage、RoleDetailPage） */
+export interface PageResult<T> {
+  /** 当前页数据 */
+  content: T[];
+  page: PageMeta;
+}
+
+/** 分页查询参数 */
+export interface PageQuery {
+  /** 页码，从 1 开始 */
+  page?: number;
+  /** 每页条数，默认 20 */
+  size?: number;
+  /**
+   * 排序条件，格式 `属性名[,asc|desc]`，属性名使用 pojo 的驼峰字段名；
+   * 可重复传参表示多字段排序（数组会被序列化为多个同名参数）
+   */
+  sortQ?: string | string[];
+}
+
 /**
  * JSON Schema（draft 2020-12）常用关键字子集
  * 用于 `GET /books/form-schema` 的返回值，值为 null 的字段不会出现在响应中

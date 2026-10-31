@@ -12,7 +12,7 @@ import { defineStore } from 'pinia';
 
 import { getUserInfoApi, loginApi } from '#/api';
 import { $t } from '#/locales';
-import { expandPermissionCodes } from '#/utils/permission';
+import { normalizePermissionCodes } from '#/utils/permission';
 
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
@@ -45,8 +45,8 @@ export const useAuthStore = defineStore('auth', () => {
       if (token) {
         // 将 token 存储到 accessStore 中
         accessStore.setAccessToken(token);
-        // 权限编码来自登录接口，展开 book:* 这类通配权限后供 v-access:code 使用
-        accessStore.setAccessCodes(expandPermissionCodes(permissions ?? []));
+        // 权限编码来自登录接口（simple 匹配，一一对应），供 v-access:code 使用
+        accessStore.setAccessCodes(normalizePermissionCodes(permissions ?? []));
 
         // 获取用户信息（GET /me）并存储
         userInfo = await fetchUserInfo();

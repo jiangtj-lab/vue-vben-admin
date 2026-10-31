@@ -18,6 +18,12 @@
   "systemConfig": {
     "title": "System Config"
   },
+  "systemRole": {
+    "title": "Roles"
+  },
+  "systemPermission": {
+    "title": "Permissions"
+  },
   "picUpload": {
     "title": "Picture Upload"
   }

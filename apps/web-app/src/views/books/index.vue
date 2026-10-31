@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import type { VxeGridProps } from '#/adapter/vxe-table';
+import type { VbenFormProps } from '#/adapter/form';
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BookApi } from '#/api';
 import type { JsonSchema } from '#/types/openapi';
 
@@ -15,7 +16,7 @@ import {
   createBookApi,
   deleteBookApi,
   getBookFormSchemaApi,
-  listBooksApi,
+  pageBooksApi,
   updateBookApi,
 } from '#/api';
 import { jsonSchemaToFormSchema } from '#/utils/json-schema';
@@ -44,18 +45,107 @@ const FALLBACK_SCHEMA: JsonSchema = {
   type: 'object',
 };
 
-const gridOptions: VxeGridProps<BookApi.Book> = {
+/** GET /books/page 的过滤条件（对应 BookQuery） */
+interface BookSearchForm {
+  author?: string;
+  isbn?: string;
+  maxPrice?: number;
+  minPrice?: number;
+  stock?: number;
+  title?: string;
+}
+
+const formOptions: VbenFormProps<BookSearchForm> = {
+  collapsed: false,
+  schema: [
+    {
+      component: 'Input',
+      componentProps: { clearable: true },
+      fieldName: 'title',
+      label: '书名',
+    },
+    {
+      component: 'Input',
+      componentProps: { clearable: true },
+      fieldName: 'author',
+      label: '作者',
+    },
+    {
+      component: 'Input',
+      componentProps: { clearable: true },
+      fieldName: 'isbn',
+      label: 'ISBN',
+    },
+    {
+      component: 'InputNumber',
+      componentProps: { class: 'w-full', min: 0 },
+      fieldName: 'stock',
+      label: '库存',
+    },
+    {
+      component: 'InputNumber',
+      componentProps: { class: 'w-full', min: 0 },
+      fieldName: 'minPrice',
+      label: '最低价',
+    },
+    {
+      component: 'InputNumber',
+      componentProps: { class: 'w-full', min: 0 },
+      fieldName: 'maxPrice',
+      label: '最高价',
+    },
+  ],
+  showCollapseButton: true,
+  submitOnEnter: true,
+};
+
+/** 去掉空值，避免把 undefined / 空串传给后端 */
+function buildQueryParams(
+  page: { currentPage: number; pageSize: number },
+  formValues: BookSearchForm,
+  sort?: { field?: string; order?: null | string },
+): BookApi.BookQuery {
+  const params: BookApi.BookQuery = {
+    page: page.currentPage,
+    size: page.pageSize,
+  };
+  for (const [key, value] of Object.entries(formValues ?? {})) {
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+    (params as Record<string, unknown>)[key] = value;
+  }
+  if (sort?.field) {
+    params.sortQ = `${sort.field},${sort.order === 'desc' ? 'desc' : 'asc'}`;
+  }
+  return params;
+}
+
+const gridOptions: VxeTableGridOptions<BookApi.Book> = {
   columns: [
     { title: '序号', type: 'seq', width: 60 },
     { field: 'title', minWidth: 200, title: '书名' },
     { field: 'author', minWidth: 140, title: '作者' },
     { field: 'isbn', minWidth: 160, title: 'ISBN' },
-    { field: 'price', slots: { default: 'price' }, title: '价格', width: 110 },
-    { align: 'center', field: 'stock', title: '库存', width: 90 },
+    {
+      field: 'price',
+      slots: { default: 'price' },
+      sortable: true,
+      title: '价格',
+      width: 120,
+    },
+    {
+      align: 'center',
+      field: 'stock',
+      sortable: true,
+      title: '库存',
+      width: 100,
+    },
     {
       field: 'createTime',
       formatter: 'formatDateTime',
       minWidth: 180,
+      sortable: true,
       title: '创建时间',
     },
     {
@@ -66,20 +156,28 @@ const gridOptions: VxeGridProps<BookApi.Book> = {
     },
   ],
   height: 'auto',
-  // 接口一次返回全部数据，无需分页
-  pagerConfig: { enabled: false },
+  pagerConfig: {},
   proxyConfig: {
     ajax: {
-      query: async () => {
-        const list = await listBooksApi();
-        return { items: list, total: list.length };
+      query: async ({ page, sort }, formValues) => {
+        const result = await pageBooksApi(
+          buildQueryParams(page, formValues, sort),
+        );
+        return {
+          items: result.content ?? [],
+          total: result.page?.totalElements ?? 0,
+        };
       },
     },
   },
-  toolbarConfig: { custom: true, refresh: true, zoom: true },
+  sortConfig: { remote: true },
+  toolbarConfig: { custom: true, refresh: true, search: true, zoom: true },
 };
 
-const [Grid, gridApi] = useVbenVxeGrid({ gridOptions });
+const [Grid, gridApi] = useVbenVxeGrid<BookApi.Book, BookSearchForm>({
+  formOptions,
+  gridOptions,
+});
 
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
@@ -171,7 +269,7 @@ async function handleDelete(row: BookApi.Book) {
 <template>
   <Page
     auto-content-height
-    description="对接 demo-backend 的 /books 接口：列表、新增、修改、删除，编辑表单由 /books/form-schema 动态生成。"
+    description="对接 demo-backend 的 /books/page 分页接口：条件查询、排序、新增、修改、删除，编辑表单由 /books/form-schema 动态生成。"
     title="图书管理"
   >
     <Grid table-title="图书列表">

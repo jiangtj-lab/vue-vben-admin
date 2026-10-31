@@ -3,15 +3,17 @@ import { requestClient } from '#/api/request';
 export namespace AuthApi {
   /** 登录接口参数（POST /login） */
   export interface LoginParams {
-    password?: string;
-    username?: string;
+    /** 明文密码，服务端使用 bcrypt 比对 */
+    password: string;
+    /** 用户名 */
+    username: string;
   }
 
   /** 登录接口返回值（POST /login） */
   export interface LoginResult {
     /** 昵称 */
     nickname: string;
-    /** 权限编码列表，如 book:* */
+    /** 权限编码列表（角色间接拥有），权限匹配为 simple，与前端权限点一一对应 */
     permissions: string[];
     /** 角色编码列表，如 admin */
     roles: string[];

@@ -18,6 +18,12 @@
   "systemConfig": {
     "title": "系统配置"
   },
+  "systemRole": {
+    "title": "角色管理"
+  },
+  "systemPermission": {
+    "title": "权限字典"
+  },
   "picUpload": {
     "title": "图片上传"
   }

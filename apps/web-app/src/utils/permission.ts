@@ -1,22 +1,14 @@
 /**
- * 前端页面中实际使用到的权限码。
- * 后端权限匹配为 ant-style，`book:*` 可覆盖 `book:read`、`book:write`，
- * 这里在登录后把通配权限展开成具体权限码，供 v-access:code 使用。
+ * 后端权限匹配方式为 simple（`jmicro.auth.permission-match=simple`），
+ * 权限点没有通配符，前后端一一对应，这里只做去重与空白清理。
  */
-const KNOWN_PERMISSION_CODES = ['book:read', 'book:write'];
-
-export function expandPermissionCodes(permissions: string[]): string[] {
-  const codes = new Set(permissions);
+export function normalizePermissionCodes(permissions: string[]): string[] {
+  const codes = new Set<string>();
 
   for (const permission of permissions) {
-    if (!permission.endsWith(':*')) {
-      continue;
-    }
-    const prefix = permission.slice(0, -1);
-    for (const code of KNOWN_PERMISSION_CODES) {
-      if (code.startsWith(prefix)) {
-        codes.add(code);
-      }
+    const code = permission?.trim();
+    if (code) {
+      codes.add(code);
     }
   }
 

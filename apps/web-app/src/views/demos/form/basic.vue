@@ -6,7 +6,7 @@ import { Page, useVbenDrawer } from '@vben/common-ui';
 import { ElButton, ElCard, ElCheckbox, ElMessage } from 'element-plus';
 
 import { useVbenForm } from '#/adapter/form';
-import { listBooksApi } from '#/api';
+import { listBookOptionsApi } from '#/api';
 
 const [Form, formApi] = useVbenForm({
   commonConfig: {
@@ -39,8 +39,8 @@ const [Form, formApi] = useVbenForm({
             value: item.id,
           }));
         },
-        // 列表接口
-        api: listBooksApi,
+        // 图书列表接口
+        api: listBookOptionsApi,
       },
       // 字段名
       fieldName: 'api',
@@ -73,7 +73,7 @@ const [Form, formApi] = useVbenForm({
           }
           return [...authors.values()];
         },
-        api: listBooksApi,
+        api: listBookOptionsApi,
         childrenField: 'children',
         // 字段名
         labelField: 'label',

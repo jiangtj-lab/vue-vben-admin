@@ -1,9 +1,9 @@
-import type { JsonSchema } from '#/types/openapi';
+import type { JsonSchema, PageQuery, PageResult } from '#/types/openapi';
 
 import { requestClient } from '#/api/request';
 
 export namespace BookApi {
-  /** 图书（GET /books、GET /books/{id}） */
+  /** 图书（GET /books/page、GET /books/{id}） */
   export interface Book {
     author: string;
     /** 创建时间，服务端 LocalDateTime 序列化结果 */
@@ -23,31 +23,48 @@ export namespace BookApi {
     stock: number;
     title: string;
   }
+
+  /**
+   * 图书分页查询参数（BookQuery + Spring Data 分页参数）
+   * - title：模糊匹配（忽略大小写）
+   * - author / isbn / stock：精确匹配
+   * - minPrice / maxPrice：价格闭区间
+   */
+  export interface BookQuery extends PageQuery {
+    author?: string;
+    isbn?: string;
+    maxPrice?: number;
+    minPrice?: number;
+    stock?: number;
+    title?: string;
+  }
 }
 
 /**
- * 查询图书列表
+ * 分页查询图书（需要权限 book:read）
  */
-export async function listBooksApi() {
-  return requestClient.get<BookApi.Book[]>('/books');
+export async function pageBooksApi(params?: BookApi.BookQuery) {
+  return requestClient.get<PageResult<BookApi.Book>>('/books/page', {
+    params,
+  });
 }
 
 /**
- * 查询单本图书
+ * 查询单本图书（需要权限 book:read）
  */
 export async function getBookApi(id: number) {
   return requestClient.get<BookApi.Book>(`/books/${id}`);
 }
 
 /**
- * 新增图书
+ * 新增图书（需要权限 book:write）
  */
 export async function createBookApi(data: BookApi.BookForm) {
   return requestClient.post<BookApi.Book>('/books', data);
 }
 
 /**
- * 修改图书（全量覆盖 title、author、isbn、price、stock）
+ * 修改图书（全量覆盖 title、author、isbn、price、stock，需要权限 book:write）
  */
 export async function updateBookApi(id: number, data: BookApi.BookForm) {
   return requestClient.put<BookApi.Book>(`/books/${id}`, data);
@@ -61,8 +78,16 @@ export async function deleteBookApi(id: number) {
 }
 
 /**
- * 获取图书表单 JSON Schema，供前端动态生成表单
+ * 获取图书表单 JSON Schema，供前端动态生成表单（公开接口）
  */
 export async function getBookFormSchemaApi() {
   return requestClient.get<JsonSchema>('/books/form-schema');
+}
+
+/**
+ * 拉取一页图书用于下拉选项（演示页使用）
+ */
+export async function listBookOptionsApi() {
+  const { content } = await pageBooksApi({ page: 1, size: 100 });
+  return content ?? [];
 }
