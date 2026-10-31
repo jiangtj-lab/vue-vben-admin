@@ -262,10 +262,13 @@ const [Form, formApi] = useVbenForm<UserFormValues>({
       component: 'Select',
       componentProps: {
         clearable: true,
+        collapseTags: true,
+        collapseTagsTooltip: true,
         filterable: true,
-        mode: 'multiple',
+        // ElSelectV2 的多选开关是 multiple（mode 无效）
+        multiple: true,
         options: [],
-        placeholder: '请选择角色',
+        placeholder: '请选择角色（可多选）',
       },
       fieldName: 'roleIds',
       help: '整体覆盖该用户的角色绑定，不选表示清空',
