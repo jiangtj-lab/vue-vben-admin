@@ -5,3 +5,4 @@ export * from './pic';
 export * from './role';
 export * from './system-config';
 export * from './user';
+export * from './users';

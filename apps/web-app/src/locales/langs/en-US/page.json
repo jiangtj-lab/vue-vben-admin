@@ -18,6 +18,9 @@
   "systemConfig": {
     "title": "System Config"
   },
+  "systemUser": {
+    "title": "Users"
+  },
   "systemRole": {
     "title": "Roles"
   },

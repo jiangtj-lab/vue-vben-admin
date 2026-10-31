@@ -18,6 +18,9 @@
   "systemConfig": {
     "title": "系统配置"
   },
+  "systemUser": {
+    "title": "用户管理"
+  },
   "systemRole": {
     "title": "角色管理"
   },
