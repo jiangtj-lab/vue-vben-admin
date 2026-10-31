@@ -3,8 +3,8 @@
 # 依据模块内的 controller 编写（src/main/java/com/jiangtj/micro/demobackend/controller）：
 #   LoginController.kt        -> POST /login、GET /me
 #   BookController.kt         -> /books、/books/{id}、/books/form-schema
-#   RoleController.kt         -> /roles、/roles/{id}
-#   UserController.kt         -> /users、/users/{id}
+#   RoleController.kt         -> /roles、/roles/{id}、/roles/form-schema
+#   UserController.kt         -> /users、/users/roles、/users/{id}、/users/form-schema
 #   PermissionController.kt   -> /permissions、/permissions/{code}
 #   PicUploadController.kt    -> POST /pic/upload
 #   JMicroConfigController.kt -> /system/configs/**
@@ -19,6 +19,8 @@
 #   - 全局 spring.jackson.default-property-inclusion=NON_NULL，值为 null 的字段不会出现在响应中
 #   - 未标注 @HasLogin / @HasRole / @HasPermission 的接口为公开接口
 #     （如 /login、/books/form-schema、/pic/upload、/system/configs/public）
+#   - 各模块的表单接口（POST/PUT）均配套 GET .../form-schema 返回表单 JSON Schema，
+#     供前端动态渲染新增/修改表单
 
 openapi: 3.0.3
 
@@ -528,6 +530,51 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /roles/form-schema:
+    get:
+      tags:
+        - Role
+      summary: 获取角色表单 JSON Schema
+      description: |
+        仅 `admin` 角色可访问。返回 `RoleForm` 的 JSON Schema（draft 2020-12），
+        供前端动态生成新增/修改角色的表单。
+      operationId: getRoleFormSchema
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: JSON Schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonSchema'
+              example:
+                $schema: 'https://json-schema.org/draft/2020-12/schema'
+                title: RoleForm
+                type: object
+                properties:
+                  code:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                    pattern: '^[A-Za-z0-9_.:-]+$'
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                  permissionCodes:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - code
+                  - name
+                  - permissionCodes
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /roles/{id}:
     parameters:
       - name: id
@@ -686,7 +733,8 @@ paths:
       description: |
         仅 `admin` 角色可访问。返回当前页用户及其绑定的角色 id（按角色 id 升序）。
         分页参数 `page`（从 1 开始）、`size`、`sortQ`（pojo 属性名，如 `sortQ=createTime,desc`）；未指定排序时按主键倒序。
-        过滤参数按 `UserQuery` 声明：`username`、`enabled` 精确匹配，`nickname` 模糊匹配（忽略大小写）。
+        过滤参数按 `UserQuery` 声明：`username`、`enabled`、`roleId` 精确匹配，`nickname` 模糊匹配（忽略大小写）。
+        其中 `roleId` 用于按角色筛选用户，取值范围来自 `GET /users/roles`。
         响应中不包含密码。
       operationId: pageUsers
       security:
@@ -716,6 +764,17 @@ paths:
           schema:
             type: boolean
           example: true
+        - name: roleId
+          in: query
+          required: false
+          description: |
+            角色 id，精确匹配（筛选绑定了该角色的用户）；
+            取值范围来自 `GET /users/roles` 返回的 `RoleOption.id`。
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 2
       responses:
         '200':
           description: 用户分页结果
@@ -737,6 +796,91 @@ paths:
                   number: 0
                   totalElements: 2
                   totalPages: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users/roles:
+    get:
+      tags:
+        - User
+      summary: 查询角色下拉选项
+      description: |
+        仅 `admin` 角色可访问。返回全量角色（按 id 升序），只包含 `id`、`code`、`name`，
+        供用户列表的角色筛选框/选择器使用；需要权限明细时请使用 `GET /roles/page`。
+        该接口为字面量路径，优先于 `/users/{id}` 匹配。
+      operationId: listUserRoleOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 角色选项列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoleOption'
+              example:
+                - id: 1
+                  code: admin
+                  name: 管理员
+                - id: 2
+                  code: reader
+                  name: 读者
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users/form-schema:
+    get:
+      tags:
+        - User
+      summary: 获取用户表单 JSON Schema
+      description: |
+        仅 `admin` 角色可访问。返回 `UserForm` 的 JSON Schema（draft 2020-12），
+        供前端动态生成新增/修改用户的表单。
+        `password` 不在 `required` 中：新增时必填（`minLength=6`），修改时留空表示不修改密码，
+        该差异由前端按场景补充校验；`roleIds` 的可选值来自 `GET /users/roles`。
+      operationId: getUserFormSchema
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: JSON Schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonSchema'
+              example:
+                $schema: 'https://json-schema.org/draft/2020-12/schema'
+                title: UserForm
+                type: object
+                properties:
+                  username:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                    pattern: '^[A-Za-z0-9_.-]+$'
+                  password:
+                    type: string
+                    minLength: 6
+                    maxLength: 64
+                  nickname:
+                    type: string
+                    maxLength: 64
+                  enabled:
+                    type: boolean
+                  roleIds:
+                    type: array
+                    items:
+                      type: integer
+                required:
+                  - username
+                  - enabled
+                  - roleIds
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1762,6 +1906,30 @@ components:
             type: string
           example:
             - 'book:read'
+
+    RoleOption:
+      type: object
+      description: 角色下拉选项（`GET /users/roles` 返回，不含权限明细）
+      required:
+        - id
+        - code
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 角色主键，用于 `UserQuery` 筛选与 `UserForm.roleIds`
+          example: 2
+        code:
+          type: string
+          maxLength: 64
+          description: 角色编码，全局唯一，`@HasRole` 注解使用该值
+          example: reader
+        name:
+          type: string
+          maxLength: 64
+          description: 角色名称，用于下拉框展示
+          example: 读者
 
     RoleForm:
       type: object

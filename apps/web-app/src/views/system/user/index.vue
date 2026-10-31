@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
-import type { RoleApi, UserApi } from '#/api';
+import type { UserApi } from '#/api';
+import type { JsonSchema } from '#/types/openapi';
 
 import { nextTick, onMounted, ref } from 'vue';
 
@@ -20,23 +21,54 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   createUserApi,
   deleteUserApi,
-  pageRolesApi,
+  getUserFormSchemaApi,
+  listUserRoleOptionsApi,
   pageUsersApi,
   updateUserApi,
 } from '#/api';
+import { jsonSchemaToFormSchema } from '#/utils/json-schema';
 
 defineOptions({ name: 'SystemUser' });
 
-/** 用户名允许的字符（与 UserForm 的 @Pattern 一致） */
-const USERNAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
-/** 一次性拉取的角色数量，用于角色下拉与列表角色名称展示 */
-const ROLE_FETCH_SIZE = 200;
+/** 后端 JSON Schema 只有字段名，这里补充中文标签 */
+const USER_FIELD_LABELS: Record<string, string> = {
+  enabled: '是否启用',
+  nickname: '昵称',
+  password: '密码',
+  roleIds: '角色',
+  username: '用户名',
+};
+
+/** 表单 Schema 接口不可用时的兜底定义（与 openapi.yaml 中 example 一致） */
+const FALLBACK_USER_FORM_SCHEMA: JsonSchema = {
+  properties: {
+    username: {
+      maxLength: 64,
+      minLength: 1,
+      pattern: '^[A-Za-z0-9_.-]+$',
+      type: 'string',
+    },
+    password: {
+      format: 'password',
+      maxLength: 64,
+      minLength: 6,
+      type: 'string',
+    },
+    nickname: { maxLength: 64, type: 'string' },
+    enabled: { default: true, type: 'boolean' },
+    roleIds: { items: { type: 'integer' }, type: 'array' },
+  },
+  required: ['username', 'enabled', 'roleIds'],
+  type: 'object',
+};
 
 interface UserSearchForm {
   /** 是否启用，精确匹配 */
   enabled?: boolean;
   /** 昵称，模糊匹配 */
   nickname?: string;
+  /** 角色 id，精确匹配（筛选框） */
+  roleId?: number;
   /** 用户名，精确匹配 */
   username?: string;
 }
@@ -89,6 +121,17 @@ const formOptions: VbenFormProps<UserSearchForm> = {
       component: 'Select',
       componentProps: {
         clearable: true,
+        filterable: true,
+        options: [],
+        placeholder: '全部角色',
+      },
+      fieldName: 'roleId',
+      label: '角色',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        clearable: true,
         options: [
           { label: '启用', value: true },
           { label: '禁用', value: false },
@@ -101,40 +144,6 @@ const formOptions: VbenFormProps<UserSearchForm> = {
   showCollapseButton: false,
   submitOnEnter: true,
 };
-
-/** 角色 id -> 角色名称，用于列表标签展示 */
-const roleNameMap = ref<Record<number, string>>({});
-/** 角色下拉选项，供用户绑定角色 */
-const roleOptions = ref<Array<{ label: string; value: number }>>([]);
-let roleOptionsPromise: null | Promise<void> = null;
-
-/** 加载角色列表；接口只有分页版本，一次性取足够多的数据并复用请求 */
-function ensureRoleOptions() {
-  roleOptionsPromise ??= pageRolesApi({ page: 1, size: ROLE_FETCH_SIZE })
-    .then((result) => {
-      const roles: RoleApi.RoleDetail[] = result.content ?? [];
-      roleOptions.value = roles.map((role) => ({
-        label: role.name,
-        value: role.id,
-      }));
-      roleNameMap.value = Object.fromEntries(
-        roles.map((role) => [role.id, role.name]),
-      );
-      // 角色下拉通过 updateSchema 注入，避免表单 schema 中残留 ref 导致选项不刷新
-      formApi.updateSchema([
-        {
-          fieldName: 'roleIds',
-          componentProps: { options: roleOptions.value },
-        },
-      ]);
-    })
-    .catch((error) => {
-      // 失败后允许下次重试
-      roleOptionsPromise = null;
-      throw error;
-    });
-  return roleOptionsPromise;
-}
 
 const gridOptions: VxeTableGridOptions<UserApi.UserDetail> = {
   columns: [
@@ -204,11 +213,6 @@ const [Grid, gridApi] = useVbenVxeGrid<UserApi.UserDetail, UserSearchForm>({
   gridOptions,
 });
 
-onMounted(() => {
-  // 列表角色标签需要名称，加载失败时降级为展示角色 id
-  ensureRoleOptions().catch(() => {});
-});
-
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const submitting = ref(false);
@@ -216,73 +220,101 @@ const submitting = ref(false);
 const [Form, formApi] = useVbenForm<UserFormValues>({
   commonConfig: { componentProps: { class: 'w-full' } },
   layout: 'vertical',
-  schema: [
-    {
-      component: 'Input',
-      componentProps: { clearable: true, maxlength: 64 },
-      fieldName: 'username',
-      help: '全局唯一，同时作为登录名；仅支持字母、数字及 _ . -',
-      label: '用户名',
-      rules: z
-        .string()
-        .min(1, { message: '请输入用户名' })
-        .max(64, { message: '最多 64 个字符' })
-        .regex(USERNAME_PATTERN, { message: '仅支持字母、数字及 _ . -' }),
-    },
-    {
-      component: 'Input',
-      componentProps: {
-        autocomplete: 'new-password',
-        clearable: true,
-        maxlength: 64,
-        showPassword: true,
-        type: 'password',
-      },
-      fieldName: 'password',
-      help: '新增时必填；修改时留空表示保留原密码',
-      label: '密码',
-      rules: passwordRules(false),
-    },
-    {
-      component: 'Input',
-      componentProps: { clearable: true, maxlength: 64 },
-      fieldName: 'nickname',
-      help: '留空时使用用户名',
-      label: '昵称',
-    },
-    {
-      component: 'Switch',
-      componentProps: { class: 'mb-0' },
-      defaultValue: true,
-      fieldName: 'enabled',
-      help: '禁用后无法登录',
-      label: '是否启用',
-    },
-    {
-      component: 'Select',
-      componentProps: {
-        clearable: true,
-        collapseTags: true,
-        collapseTagsTooltip: true,
-        filterable: true,
-        // ElSelectV2 的多选开关是 multiple（mode 无效）
-        multiple: true,
-        options: [],
-        placeholder: '请选择角色（可多选）',
-      },
-      fieldName: 'roleIds',
-      help: '整体覆盖该用户的角色绑定，不选表示清空',
-      label: '角色',
-    },
-  ],
+  schema: [],
   showDefaultActions: false,
+});
+
+/** 角色 id -> 角色名称，用于列表标签展示 */
+const roleNameMap = ref<Record<number, string>>({});
+/** 角色下拉选项，供筛选框与用户绑定角色复用 */
+const roleOptions = ref<Array<{ label: string; value: number }>>([]);
+let roleOptionsPromise: null | Promise<UserApi.RoleOption[]> = null;
+
+/** 加载角色下拉选项（GET /users/roles），失败后允许下次重试 */
+function ensureRoleOptions() {
+  roleOptionsPromise ??= listUserRoleOptionsApi()
+    .then((roles) => {
+      const list = roles ?? [];
+      roleOptions.value = list.map((role) => ({
+        label: role.name,
+        value: role.id,
+      }));
+      roleNameMap.value = Object.fromEntries(
+        list.map((role) => [role.id, role.name]),
+      );
+      // 筛选框与编辑表单通过 updateSchema 注入选项，避免 schema 中残留空数组
+      gridApi.formApi.updateSchema([
+        {
+          fieldName: 'roleId',
+          componentProps: { options: roleOptions.value },
+        },
+      ]);
+      formApi.updateSchema([
+        {
+          fieldName: 'roleIds',
+          componentProps: { options: roleOptions.value },
+        },
+      ]);
+      return list;
+    })
+    .catch((error) => {
+      roleOptionsPromise = null;
+      throw error;
+    });
+  return roleOptionsPromise;
+}
+
+let formSchemaLoaded = false;
+
+/** 动态表单：使用 GET /users/form-schema 返回的 JSON Schema 生成 */
+async function ensureFormSchema() {
+  if (formSchemaLoaded) {
+    return;
+  }
+  let schema = FALLBACK_USER_FORM_SCHEMA;
+  try {
+    schema = await getUserFormSchemaApi();
+  } catch {
+    // 接口不可用时使用兜底 schema，错误提示已由请求拦截器给出
+  }
+  formApi.setState({
+    schema: jsonSchemaToFormSchema<UserFormValues>(schema, {
+      fields: {
+        password: {
+          componentProps: {
+            autocomplete: 'new-password',
+            showPassword: true,
+            type: 'password',
+          },
+        },
+        roleIds: {
+          componentProps: {
+            collapseTags: true,
+            collapseTagsTooltip: true,
+            filterable: true,
+            options: roleOptions.value,
+            placeholder: '请选择角色（可多选）',
+          },
+        },
+      },
+      labels: USER_FIELD_LABELS,
+    }),
+  });
+  formSchemaLoaded = true;
+}
+
+onMounted(() => {
+  // 列表角色标签与筛选框都需要角色选项，加载失败时降级为展示角色 id
+  ensureRoleOptions().catch(() => {});
 });
 
 async function openDialog(row?: UserApi.UserDetail) {
   // 角色加载失败不阻塞表单，角色下拉降级为空
   await ensureRoleOptions().catch(() => {});
+  await ensureFormSchema();
   editingId.value = row?.id ?? null;
-  await formApi.updateSchema([
+  // JSON Schema 里 password 非必填，新增场景需要前端补充必填校验
+  formApi.updateSchema([
     { fieldName: 'password', rules: passwordRules(Boolean(editingId.value)) },
   ]);
   dialogVisible.value = true;
@@ -347,7 +379,7 @@ async function handleDelete(row: UserApi.UserDetail) {
 <template>
   <Page
     auto-content-height
-    description="对接 demo-backend 的 /users 接口：分页查询、新增、修改、删除，并为用户绑定角色（仅 admin 角色可见）。"
+    description="对接 demo-backend 的 /users 接口：分页查询（按角色筛选）、新增、修改、删除，表单由 /users/form-schema 动态生成（仅 admin 角色可见）。"
     title="用户管理"
   >
     <Grid table-title="用户列表">

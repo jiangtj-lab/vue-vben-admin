@@ -2,6 +2,7 @@
 import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { RoleApi } from '#/api';
+import type { JsonSchema } from '#/types/openapi';
 import type { PermissionTreeNode } from '#/utils/permission';
 
 import { nextTick, onMounted, ref } from 'vue';
@@ -17,21 +18,42 @@ import {
   ElTree,
 } from 'element-plus';
 
-import { useVbenForm, z } from '#/adapter/form';
+import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   createRoleApi,
   deleteRoleApi,
+  getRoleFormSchemaApi,
   listPermissionsApi,
   pageRolesApi,
   updateRoleApi,
 } from '#/api';
+import { jsonSchemaToFormSchema } from '#/utils/json-schema';
 import { buildPermissionTree, isPermissionGroup } from '#/utils/permission';
 
 defineOptions({ name: 'RoleManage' });
 
-/** 角色编码允许的字符（与 RoleForm 的 @Pattern 一致） */
-const CODE_PATTERN = /^[A-Za-z0-9_.:-]+$/;
+/** 后端 JSON Schema 只有字段名，这里补充中文标签 */
+const ROLE_FIELD_LABELS: Record<string, string> = {
+  code: '角色编码',
+  name: '角色名称',
+};
+
+/** 表单 Schema 接口不可用时的兜底定义（与 openapi.yaml 中 example 一致） */
+const FALLBACK_ROLE_FORM_SCHEMA: JsonSchema = {
+  properties: {
+    code: {
+      maxLength: 64,
+      minLength: 1,
+      pattern: '^[A-Za-z0-9_.:-]+$',
+      type: 'string',
+    },
+    name: { maxLength: 64, minLength: 1, type: 'string' },
+    permissionCodes: { items: { type: 'string' }, type: 'array' },
+  },
+  required: ['code', 'name', 'permissionCodes'],
+  type: 'object',
+};
 
 interface RoleSearchForm {
   /** 角色编码，精确匹配 */
@@ -151,32 +173,34 @@ const submitting = ref(false);
 const [Form, formApi] = useVbenForm({
   commonConfig: { componentProps: { class: 'w-full' } },
   layout: 'vertical',
-  schema: [
-    {
-      component: 'Input',
-      componentProps: { clearable: true, maxlength: 64 },
-      fieldName: 'code',
-      help: '角色编码全局唯一，用于 @HasRole 鉴权',
-      label: '角色编码',
-      rules: z
-        .string()
-        .min(1, { message: '请输入角色编码' })
-        .max(64, { message: '最多 64 个字符' })
-        .regex(CODE_PATTERN, { message: '仅支持字母、数字及 _ . : -' }),
-    },
-    {
-      component: 'Input',
-      componentProps: { clearable: true, maxlength: 64 },
-      fieldName: 'name',
-      label: '角色名称',
-      rules: z
-        .string()
-        .min(1, { message: '请输入角色名称' })
-        .max(64, { message: '最多 64 个字符' }),
-    },
-  ],
+  schema: [],
   showDefaultActions: false,
 });
+
+let formSchemaLoaded = false;
+
+/**
+ * 动态表单：使用 GET /roles/form-schema 返回的 JSON Schema 生成
+ * permissionCodes 由弹窗内的权限树维护，不参与表单渲染
+ */
+async function ensureFormSchema() {
+  if (formSchemaLoaded) {
+    return;
+  }
+  let schema = FALLBACK_ROLE_FORM_SCHEMA;
+  try {
+    schema = await getRoleFormSchemaApi();
+  } catch {
+    // 接口不可用时使用兜底 schema，错误提示已由请求拦截器给出
+  }
+  formApi.setState({
+    schema: jsonSchemaToFormSchema(schema, {
+      labels: ROLE_FIELD_LABELS,
+      skip: ['permissionCodes'],
+    }),
+  });
+  formSchemaLoaded = true;
+}
 
 const treeRef = ref<InstanceType<typeof ElTree>>();
 /** 待回显的已勾选权限，等弹窗内的树渲染完成后再设置 */
@@ -184,6 +208,7 @@ const pendingCheckedCodes = ref<string[]>([]);
 
 async function openDialog(row?: RoleApi.RoleDetail) {
   await ensurePermissionTree();
+  await ensureFormSchema();
   editingId.value = row?.id ?? null;
   // 分组节点只用于整组勾选，回显时忽略，避免连带勾选整组权限
   pendingCheckedCodes.value = (row?.permissionCodes ?? []).filter(
@@ -252,7 +277,7 @@ async function handleDelete(row: RoleApi.RoleDetail) {
 <template>
   <Page
     auto-content-height
-    description="对接 demo-backend 的 /roles 接口：分页查询、新增、修改、删除，并为角色绑定权限字典中的权限编码（仅 admin 角色可见）。"
+    description="对接 demo-backend 的 /roles 接口：分页查询、新增、修改、删除，表单由 /roles/form-schema 动态生成，权限通过权限树勾选（仅 admin 角色可见）。"
     title="角色管理"
   >
     <Grid table-title="角色列表">

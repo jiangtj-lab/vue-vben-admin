@@ -1,4 +1,4 @@
-import type { PageQuery, PageResult } from '#/types/openapi';
+import type { JsonSchema, PageQuery, PageResult } from '#/types/openapi';
 
 import { requestClient } from '#/api/request';
 
@@ -68,4 +68,11 @@ export async function updateRoleApi(id: number, data: RoleApi.RoleForm) {
  */
 export async function deleteRoleApi(id: number) {
   return requestClient.delete<null>(`/roles/${id}`);
+}
+
+/**
+ * 获取角色表单 JSON Schema，供前端动态生成新增/修改角色的表单
+ */
+export async function getRoleFormSchemaApi() {
+  return requestClient.get<JsonSchema>('/roles/form-schema');
 }

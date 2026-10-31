@@ -1,4 +1,4 @@
-import type { PageQuery, PageResult } from '#/types/openapi';
+import type { JsonSchema, PageQuery, PageResult } from '#/types/openapi';
 
 import { requestClient } from '#/api/request';
 
@@ -25,6 +25,16 @@ export namespace UserApi {
   /** 用户详情分页结果（UserDetailPage） */
   export type UserDetailPage = PageResult<UserDetail>;
 
+  /** 角色下拉选项（RoleOption，GET /users/roles） */
+  export interface RoleOption {
+    /** 角色编码，全局唯一 */
+    code: string;
+    /** 角色主键，用于筛选与 UserForm.roleIds */
+    id: number;
+    /** 角色名称，用于下拉框展示 */
+    name: string;
+  }
+
   /** 用户新增/修改请求体（UserForm） */
   export interface UserForm {
     enabled?: boolean;
@@ -49,6 +59,8 @@ export namespace UserApi {
     enabled?: boolean;
     /** 昵称，模糊匹配（忽略大小写） */
     nickname?: string;
+    /** 角色 id，精确匹配；取值来自 listUserRoleOptionsApi */
+    roleId?: number;
     /** 用户名，精确匹配 */
     username?: string;
   }
@@ -87,4 +99,19 @@ export async function updateUserApi(id: number, data: UserApi.UserForm) {
  */
 export async function deleteUserApi(id: number) {
   return requestClient.delete<null>(`/users/${id}`);
+}
+
+/**
+ * 查询角色下拉选项（仅 admin 角色可访问）
+ * 返回全量角色的 id/code/name，供用户列表的角色筛选框与表单的角色选择使用
+ */
+export async function listUserRoleOptionsApi() {
+  return requestClient.get<UserApi.RoleOption[]>('/users/roles');
+}
+
+/**
+ * 获取用户表单 JSON Schema，供前端动态生成新增/修改用户的表单
+ */
+export async function getUserFormSchemaApi() {
+  return requestClient.get<JsonSchema>('/users/form-schema');
 }
